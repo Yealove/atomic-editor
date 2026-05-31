@@ -16,10 +16,11 @@ import {
 
 type ThemeMode = 'dark' | 'light';
 
-// Shown in the version pill. Kept in sync with package.json by hand —
-// the demo is a sibling app, not a package import, so there's no build
-// step wiring the real version in.
-const VERSION = '0.3.0';
+// Injected from package.json at build time via Vite `define` (see
+// vite.config.ts), so the version pill can never drift from the real
+// published version.
+declare const __APP_VERSION__: string;
+const VERSION = __APP_VERSION__;
 
 const WIKI_TARGETS: WikiLinkSuggestion[] = [
   { target: 'demo-project-atlas', label: 'Project Atlas', detail: 'Project' },
