@@ -526,7 +526,7 @@ function extractCellImages(text: string): CellImage[] {
 // `![alt](url)` markdown is the source of truth, but on an inactive
 // cell (no focus inside) the raw source hides and only the rendered
 // image remains visible. `data-has-image` flips on for that CSS hook.
-function refreshCellPreview(cell: HTMLElement): void {
+function refreshCellPreview(cell: HTMLElement, resolveSrc?: (src: string) => string): void {
   const existing = cell.querySelector<HTMLElement>('.cm-atomic-table-cell-preview');
   if (existing) existing.remove();
 
@@ -547,7 +547,7 @@ function refreshCellPreview(cell: HTMLElement): void {
 
   for (const { src, alt } of imgs) {
     const img = document.createElement('img');
-    img.src = src;
+    img.src = resolveSrc ? resolveSrc(src) : src;
     img.alt = alt;
     img.loading = 'lazy';
     img.className = 'cm-atomic-table-cell-image';
@@ -712,7 +712,7 @@ function makeCell(
     renderCellSourceDecorated(source);
     if (offset != null) setCaretCharOffset(source, offset);
     updateActiveMarkForSource(source);
-    refreshCellPreview(cell);
+    refreshCellPreview(cell, view.state.facet(tableImageSrcFacet));
     dispatchModelFromDom(view, cell);
   };
 
@@ -835,7 +835,7 @@ function makeCell(
     placeCaretAtEnd(source);
   });
 
-  refreshCellPreview(cell);
+  refreshCellPreview(cell, view.state.facet(tableImageSrcFacet));
 
   return cell;
 }
@@ -1242,6 +1242,12 @@ export interface TablesConfig {
    * '_blank', 'noopener,noreferrer')`.
    */
   onLinkClick?: (url: string) => void;
+  /**
+   * Translate markdown image URLs before they are set as `<img src>`.
+   * Useful in platform shells (Tauri, Electron) where relative paths
+   * need to be converted to asset:// or file:// URLs.
+   */
+  resolveImageSrc?: (src: string) => string;
 }
 
 const defaultLinkOpener = (url: string): void => {
@@ -1262,11 +1268,19 @@ export const tableLinkClickFacet = Facet.define<
   combine: (values) => values[0] ?? defaultLinkOpener,
 });
 
+export const tableImageSrcFacet = Facet.define<
+  (src: string) => string,
+  (src: string) => string
+>({
+  combine: (values) => values[0] ?? ((s: string) => s),
+});
+
 export function tables(config: TablesConfig = {}): Extension {
   return [
     tableField,
     treeProgressPlugin,
     ...(config.onLinkClick ? [tableLinkClickFacet.of(config.onLinkClick)] : []),
+    ...(config.resolveImageSrc ? [tableImageSrcFacet.of(config.resolveImageSrc)] : []),
     // Prec.high so we run before the default Backspace binding.
     Prec.high(keymap.of([{ key: 'Backspace', run: backspaceAtTableBoundary }])),
   ];

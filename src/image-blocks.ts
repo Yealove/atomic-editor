@@ -61,6 +61,7 @@ class ImageWidget extends WidgetType {
     const wrap = document.createElement('div');
     wrap.className = 'cm-atomic-image';
     const img = document.createElement('img');
+    console.log('[AtomicEditor] ImageWidget src:', this.src);
     img.src = this.src;
     img.alt = this.alt;
     img.loading = 'lazy';
@@ -117,17 +118,12 @@ class ImageWidget extends WidgetType {
   }
 }
 
-function buildImageBlocks(state: EditorState): DecorationSet {
+function buildImageBlocks(state: EditorState, resolveSrc: (src: string) => string): DecorationSet {
   const ranges: Range<Decoration>[] = [];
-  // Push the parser to cover the whole doc so image nodes in
-  // regions CM6 hasn't yet parsed get widgetized. Without this, for
-  // moderately long atoms the initial parse doesn't reach the
-  // bottom and images past the initial parse window render as raw
-  // `![alt](url)` text forever — the StateField only rebuilds on
-  // doc change, not on parser advance. 200ms is a generous
-  // upper bound; typical atoms finish in well under 10ms.
   const tree =
     ensureSyntaxTree(state, state.doc.length, 200) ?? syntaxTree(state);
+
+  console.log('[AtomicEditor] buildImageBlocks called, doc length:', state.doc.length, 'has resolver:', resolveSrc !== undefined);
 
   tree.iterate({
     enter: (node) => {
@@ -147,15 +143,17 @@ function buildImageBlocks(state: EditorState): DecorationSet {
       // (escaped parens etc.); the regex fails safely by skipping
       // the widget.
       const raw = state.doc.sliceString(node.from, node.to);
+      console.log('[AtomicEditor] found Image node, raw:', raw);
       const match = raw.match(/^!\[([^\]]*)\]\(([^\s)"']+)(?:\s+["'][^)]*["'])?\)$/);
-      if (!match) return;
+      if (!match) { console.log('[AtomicEditor] Image regex did not match'); return; }
       const [, alt, src] = match;
       if (!src) return;
+      const resolvedSrc = resolveSrc(src);
 
       const line = state.doc.lineAt(node.from);
       ranges.push(
         Decoration.widget({
-          widget: new ImageWidget(src, alt),
+          widget: new ImageWidget(resolvedSrc, alt),
           block: true,
           // side: 1 places the block widget after the line's content,
           // so the image appears below its source line.
@@ -208,30 +206,27 @@ function changeAffectsImages(tr: Transaction, existing: DecorationSet): boolean 
   return affected;
 }
 
-const imageBlocksField = StateField.define<DecorationSet>({
-  create: (state) => buildImageBlocks(state),
-  update(deco, tr) {
-    // Tree-growth effect: the background parser caught up to a
-    // region that wasn't parsed when we last built. Rebuild so any
-    // newly-visible Image nodes get their widget.
-    for (const effect of tr.effects) {
-      if (effect.is(treeGrowthEffect)) return buildImageBlocks(tr.state);
-    }
-    // Selection and viewport changes don't affect the widget set
-    // (though they do affect whether the surrounding markdown is
-    // shown, which is handled by the inline-preview ViewPlugin).
-    if (!tr.docChanged) return deco;
-    // Most keystrokes on a large atom are in plain prose with no
-    // image nearby. Map existing decorations through the change and
-    // skip the full-doc walk unless the change actually touches an
-    // image.
-    const mapped = deco.map(tr.changes);
-    if (!changeAffectsImages(tr, deco)) return mapped;
-    return buildImageBlocks(tr.state);
-  },
-  provide: (f) => EditorView.decorations.from(f),
-});
-
-export function imageBlocks(): Extension {
-  return [imageBlocksField, treeProgressPlugin];
+/**
+ * Create the image-blocks extension. Accepts an optional `resolveSrc`
+ * callback that translates markdown image URLs before they are set as
+ * `<img src>` — e.g. converting relative paths to platform-specific
+ * asset:// URLs in Tauri / Electron. When omitted the raw source is
+ * used unchanged.
+ */
+export function imageBlocks(resolveSrc?: (src: string) => string): Extension {
+  const resolve = resolveSrc ?? ((s: string) => s);
+  const field = StateField.define<DecorationSet>({
+    create: (state) => buildImageBlocks(state, resolve),
+    update(deco, tr) {
+      for (const effect of tr.effects) {
+        if (effect.is(treeGrowthEffect)) return buildImageBlocks(tr.state, resolve);
+      }
+      if (!tr.docChanged) return deco;
+      const mapped = deco.map(tr.changes);
+      if (!changeAffectsImages(tr, deco)) return mapped;
+      return buildImageBlocks(tr.state, resolve);
+    },
+    provide: (f) => EditorView.decorations.from(f),
+  });
+  return [field, treeProgressPlugin];
 }

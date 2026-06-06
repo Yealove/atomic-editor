@@ -1,5 +1,5 @@
 import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
+import vue from '@vitejs/plugin-vue';
 import path from 'path';
 import { readFileSync } from 'fs';
 
@@ -24,7 +24,7 @@ export default defineConfig({
   // sets VITE_BASE so asset URLs get the right prefix. Local dev
   // (no env var) falls back to `/`.
   base: process.env.VITE_BASE ?? '/',
-  plugins: [react()],
+  plugins: [vue()],
   resolve: {
     // Alias package self-imports so demo code reads exactly like a
     // consumer's would, without needing a link or a publish step.

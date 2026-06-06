@@ -1,0 +1,1 @@
+{"version":3,"file":"edit-helpers.d.ts","sourceRoot":"","sources":["../src/edit-helpers.ts"],"names":[],"mappings":"AACA,OAAO,EAAE,UAAU,EAAE,MAAM,kBAAkB,CAAC;AAkB9C,eAAO,MAAM,kBAAkB,uCAoB9B,CAAC;AAkBF,eAAO,MAAM,kBAAkB,uCAE9B,CAAC;AAEF,wBAAgB,uBAAuB,CACrC,IAAI,EAAE,UAAU,EAChB,IAAI,EAAE,MAAM,EACZ,EAAE,EAAE,MAAM,EACV,IAAI,EAAE,MAAM,GACX,OAAO,CAoBT"}
