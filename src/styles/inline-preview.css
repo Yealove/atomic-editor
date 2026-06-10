@@ -131,6 +131,67 @@
   padding-right: 0.75rem;
 }
 
+/* First line of a fenced code block — provides positioning context for
+ * the copy button. */
+.cm-line.cm-atomic-fenced-code-first {
+  position: relative;
+}
+
+/* Copy button — positioned at the top-right of the code block.
+ * Invisible by default; reveals on hover over the first line.
+ * On touch devices (no hover), always visible at reduced opacity. */
+.cm-atomic-code-copy {
+  position: absolute;
+  top: 0.2em;
+  right: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5em;
+  height: 1.5em;
+  padding: 0;
+  background: var(--atomic-editor-bg-surface, #2d2d2d);
+  border: 1px solid var(--atomic-editor-border, #3d3d3d);
+  border-radius: var(--atomic-editor-radius, 4px);
+  color: var(--atomic-editor-fg-muted, #888);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  z-index: 1;
+}
+
+.cm-atomic-code-copy:hover {
+  color: var(--atomic-editor-fg, #dcddde);
+  border-color: var(--atomic-editor-fg-muted, #888);
+}
+
+.cm-line.cm-atomic-fenced-code-first:hover .cm-atomic-code-copy {
+  opacity: 1;
+}
+
+.cm-atomic-code-copy:focus-visible {
+  opacity: 1;
+  outline: none;
+  border-color: var(--atomic-editor-accent, #7c3aed);
+}
+
+.cm-atomic-code-copy svg {
+  width: 0.82em;
+  height: 0.82em;
+}
+
+.cm-atomic-code-copy.cm-atomic-code-copied {
+  color: var(--atomic-editor-hl-string, #c3e88d);
+  border-color: var(--atomic-editor-hl-string, #c3e88d);
+}
+
+/* Touch devices: always show the copy button since there's no hover. */
+@media (hover: none) and (pointer: coarse) {
+  .cm-atomic-code-copy {
+    opacity: 0.7;
+  }
+}
+
 /* Inline content marks — applied on the text inside **…**, *…*, `…`,
  * ~~…~~, [text](url). Styling only; no height changes. */
 .cm-atomic-strong {

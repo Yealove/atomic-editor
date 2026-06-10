@@ -234,6 +234,52 @@ class BulletWidget extends WidgetType {
 
 const BULLET_WIDGET = new BulletWidget();
 
+class CodeCopyWidget extends WidgetType {
+  constructor(private nodeFrom: number, private nodeTo: number) {
+    super();
+  }
+
+  eq(other: CodeCopyWidget): boolean {
+    return other.nodeFrom === this.nodeFrom && other.nodeTo === this.nodeTo;
+  }
+
+  toDOM(view: EditorView): HTMLElement {
+    const btn = document.createElement('button');
+    btn.className = 'cm-atomic-code-copy';
+    btn.setAttribute('contenteditable', 'false');
+    btn.setAttribute('aria-label', 'Copy code');
+    btn.title = 'Copy';
+    btn.innerHTML =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+    btn.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const { doc } = view.state;
+      const firstLine = doc.lineAt(this.nodeFrom);
+      const lastLine = doc.lineAt(Math.min(this.nodeTo, doc.length));
+      if (lastLine.number <= firstLine.number) return;
+      const code = doc.sliceString(firstLine.to, lastLine.from);
+      navigator.clipboard.writeText(code).then(() => {
+        btn.classList.add('cm-atomic-code-copied');
+        btn.title = 'Copied!';
+        setTimeout(() => {
+          btn.classList.remove('cm-atomic-code-copied');
+          btn.title = 'Copy';
+        }, 1500);
+      });
+    });
+    return btn;
+  }
+
+  ignoreEvent(event: Event): boolean {
+    return event.type === 'mousedown' || event.type === 'click';
+  }
+}
+
 class TaskCheckboxWidget extends WidgetType {
   constructor(readonly checked: boolean) {
     super();
@@ -377,18 +423,29 @@ function buildInlineDecorations(view: EditorView): DecorationSet {
   tree.iterate({
     enter: (node) => {
       if (node.name === 'FencedCode') {
-        const firstLine = doc.lineAt(node.from).number;
-        const lastLine = doc.lineAt(node.to).number;
+        const firstLineNum = doc.lineAt(node.from).number;
+        const lastLineNum = doc.lineAt(node.to).number;
         let anyActive = false;
-        for (let n = firstLine; n <= lastLine; n++) {
+        for (let n = firstLineNum; n <= lastLineNum; n++) {
           if (activeLines.has(n)) {
             anyActive = true;
             break;
           }
         }
         if (anyActive) {
-          for (let n = firstLine; n <= lastLine; n++) activeLines.add(n);
+          for (let n = firstLineNum; n <= lastLineNum; n++) activeLines.add(n);
         }
+        // Copy button on the first line of the fenced code block.
+        const fcFirst = doc.line(firstLineNum);
+        ranges.push(
+          Decoration.line({ class: 'cm-atomic-fenced-code-first' }).range(fcFirst.from),
+        );
+        ranges.push(
+          Decoration.widget({
+            widget: new CodeCopyWidget(node.from, node.to),
+            side: -1,
+          }).range(fcFirst.from),
+        );
       }
       if (node.name === 'Link' && view.hasFocus) {
         for (const range of state.selection.ranges) {
@@ -424,7 +481,21 @@ function buildInlineDecorations(view: EditorView): DecorationSet {
         // Image node falls through to line-based — images have
         // their own widget UX that the line-based reveal fits.
         let shouldHide: boolean;
-        if (LINK_CHILD_SYNTAX.has(node.name)) {
+        if (node.name === 'URL') {
+          // A URL token is the visible content for bare URLs, GFM
+          // autolinks, and <url> — hiding it erases the entire link.
+          // Only hide when it lives inside a bracket-style
+          // `[text](url)` Link (which has LinkMark children), so
+          // the separate link text remains visible.
+          let parent = node.node.parent;
+          while (parent && parent.name !== 'Link') {
+            parent = parent.parent;
+          }
+          shouldHide =
+            parent !== null && parent.name === 'Link' && parent.getChild('LinkMark') !== null
+              ? !activeLinkStarts.has(parent.from)
+              : false;
+        } else if (LINK_CHILD_SYNTAX.has(node.name)) {
           let parent = node.node.parent;
           while (parent && parent.name !== 'Link' && parent.name !== 'Image') {
             parent = parent.parent;

@@ -204,6 +204,61 @@ class BulletWidget extends WidgetType {
     }
 }
 const BULLET_WIDGET = new BulletWidget();
+class CodeCopyWidget extends WidgetType {
+    constructor(nodeFrom, nodeTo) {
+        super();
+        Object.defineProperty(this, "nodeFrom", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: nodeFrom
+        });
+        Object.defineProperty(this, "nodeTo", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: nodeTo
+        });
+    }
+    eq(other) {
+        return other.nodeFrom === this.nodeFrom && other.nodeTo === this.nodeTo;
+    }
+    toDOM(view) {
+        const btn = document.createElement('button');
+        btn.className = 'cm-atomic-code-copy';
+        btn.setAttribute('contenteditable', 'false');
+        btn.setAttribute('aria-label', 'Copy code');
+        btn.title = 'Copy';
+        btn.innerHTML =
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+        btn.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+        });
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const { doc } = view.state;
+            const firstLine = doc.lineAt(this.nodeFrom);
+            const lastLine = doc.lineAt(Math.min(this.nodeTo, doc.length));
+            if (lastLine.number <= firstLine.number)
+                return;
+            const code = doc.sliceString(firstLine.to, lastLine.from);
+            navigator.clipboard.writeText(code).then(() => {
+                btn.classList.add('cm-atomic-code-copied');
+                btn.title = 'Copied!';
+                setTimeout(() => {
+                    btn.classList.remove('cm-atomic-code-copied');
+                    btn.title = 'Copy';
+                }, 1500);
+            });
+        });
+        return btn;
+    }
+    ignoreEvent(event) {
+        return event.type === 'mousedown' || event.type === 'click';
+    }
+}
 class TaskCheckboxWidget extends WidgetType {
     constructor(checked) {
         super();
@@ -339,19 +394,26 @@ function buildInlineDecorations(view) {
     tree.iterate({
         enter: (node) => {
             if (node.name === 'FencedCode') {
-                const firstLine = doc.lineAt(node.from).number;
-                const lastLine = doc.lineAt(node.to).number;
+                const firstLineNum = doc.lineAt(node.from).number;
+                const lastLineNum = doc.lineAt(node.to).number;
                 let anyActive = false;
-                for (let n = firstLine; n <= lastLine; n++) {
+                for (let n = firstLineNum; n <= lastLineNum; n++) {
                     if (activeLines.has(n)) {
                         anyActive = true;
                         break;
                     }
                 }
                 if (anyActive) {
-                    for (let n = firstLine; n <= lastLine; n++)
+                    for (let n = firstLineNum; n <= lastLineNum; n++)
                         activeLines.add(n);
                 }
+                // Copy button on the first line of the fenced code block.
+                const fcFirst = doc.line(firstLineNum);
+                ranges.push(Decoration.line({ class: 'cm-atomic-fenced-code-first' }).range(fcFirst.from));
+                ranges.push(Decoration.widget({
+                    widget: new CodeCopyWidget(node.from, node.to),
+                    side: -1,
+                }).range(fcFirst.from));
             }
             if (node.name === 'Link' && view.hasFocus) {
                 for (const range of state.selection.ranges) {
@@ -390,7 +452,13 @@ function buildInlineDecorations(view) {
                         parent = parent.parent;
                     }
                     if (parent && parent.name === 'Link') {
-                        shouldHide = !activeLinkStarts.has(parent.from);
+                        // GFM autolinks (bare URLs like https://example.com, or
+                        // <url>) have no LinkMark children — the URL token IS the
+                        // visible link text. Hiding it would erase the entire
+                        // link. Only hide the URL for bracket-style
+                        // `[text](url)` links that have separate visible text.
+                        const isAutolink = !parent.getChild('LinkMark');
+                        shouldHide = isAutolink ? !activeLines.has(lineNum) : !activeLinkStarts.has(parent.from);
                     }
                     else {
                         shouldHide = !activeLines.has(lineNum);
